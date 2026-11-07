@@ -87,6 +87,12 @@ free_gb=$(( $(df --output=avail -k "$REPO" | tail -1) / 1024 / 1024 ))
 if [[ $free_gb -ge 2 ]]; then pass "Disk space: ${free_gb} GB free"
 else fail "Only ${free_gb} GB free" "set generate.keep_images in config.toml or delete old images"; fi
 
+if [[ -x "$PY" ]]; then
+    ON_CAL="$("$PY" "$REPO/src/config.py" schedule.on_calendar)"
+    if systemd-analyze calendar "$ON_CAL" > /dev/null 2>&1; then pass "Schedule \"$ON_CAL\" is valid"
+    else fail "schedule.on_calendar \"$ON_CAL\" is not a valid schedule" \
+        "fix it in config.toml (see README 'Changing the schedule'), then scripts/install.sh --services"; fi
+fi
 if systemctl is-enabled paperpi.timer > /dev/null 2>&1; then
     pass "paperpi.timer enabled (next: $(systemctl show paperpi.timer -p NextElapseUSecRealtime --value))"
 else fail "paperpi.timer not enabled" "scripts/install.sh --services"; fi

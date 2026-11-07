@@ -172,6 +172,13 @@ install_services() {
     step "Installing systemd services"
     local on_calendar unit
     on_calendar="$("$PY" "$REPO/src/config.py" schedule.on_calendar)"
+    # A bad schedule silently disables the timer, so check it before installing.
+    if ! systemd-analyze calendar "$on_calendar" > /dev/null 2>&1; then
+        systemd-analyze calendar "$on_calendar" 2>&1 | sed 's/^/    /' || true
+        die "schedule.on_calendar = \"$on_calendar\" in config.toml is not a valid schedule.
+See 'Changing the schedule' in README.md for examples, e.g. \"*-*-* *:00/30:00\" for every 30 minutes.
+The previous schedule is still installed."
+    fi
     for unit in paperpi.service paperpi.timer paperpi-buttons.service; do
         sed -e "s|@USER@|$RUN_USER|g" -e "s|@REPO@|$REPO|g" -e "s|@ON_CALENDAR@|$on_calendar|g" \
             "$REPO/scripts/$unit" | sudo tee "/etc/systemd/system/$unit" > /dev/null

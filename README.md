@@ -150,6 +150,7 @@ means "every". So `*-*-* 06:00:00` means every day at 06:00.
 | Once a day at 6am | `"*-*-* 06:00:00"` |
 | Twice a day, 6am and 6pm | `"*-*-* 06,18:00:00"` |
 | Three times a day, 7am, 1pm and 7pm | `"*-*-* 07,13,19:00:00"` |
+| Every 30 minutes (:00 and :30) | `"*-*-* *:00/30:00"` |
 | Every 4 hours (00:00, 04:00, 08:00 ...) | `"*-*-* 00/4:00:00"` |
 | Every 3 hours from 8am to 8pm | `"*-*-* 08..20/3:00:00"` |
 | Every hour | `"hourly"` |
@@ -158,7 +159,11 @@ means "every". So `*-*-* 06:00:00` means every day at 06:00.
 | Once a week, Monday 6am | `"Mon *-*-* 06:00:00"` |
 
 * Hours use the 24-hour clock in the Pi's local time zone.
-* `a,b,c` lists times, `a..b` is a range, and `/n` means "every n".
+* `a,b,c` lists times, `a..b` is a range, and `start/n` means "every n,
+  starting at start". Put it in the hours position (`00/4:00:00`) for every n
+  hours, or the minutes position (`*:00/30:00`) for every n minutes. `n` can't be 0.
+* `scripts/install.sh --services` refuses an invalid schedule and keeps the
+  previous one, so a typo can't switch the frame off.
 
 ### Apply the change
 
