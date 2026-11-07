@@ -103,9 +103,57 @@ Edit `config.toml` (created from `config.example.toml`). The main settings:
 
 After changing `schedule.on_calendar`, run `scripts/install.sh --services`.
 
-Prompts are built by picking one fragment from each list in
-`prompts/flowers.json`. Point `paths.prompts_file` at your own file to change
-subjects and styles. Flat, bold, low-colour styles suit e-paper best.
+See [Prompt libraries](#prompt-libraries) to change what gets drawn.
+
+## Prompt libraries
+
+A prompt library is a JSON file in `prompts/`. It holds a **list of lists**.
+Each picture's prompt is built by picking one random entry from each inner
+list and joining them with spaces, in order.
+
+```json
+[
+    ["single stem rose", "bouquet of tulips"],
+    ["as a woodblock print", "as a vintage postcard"]
+]
+```
+
+That small example can produce "bouquet of tulips as a woodblock print".
+
+Bundled libraries:
+
+| File | Lists | Example prompt |
+| --- | --- | --- |
+| `prompts/flowers.json` | subject, style | single iris as a vintage postcard |
+| `prompts/planets.json` | landscape, sky, detail, style | crystal canyon under two suns a crashed spaceship as a linocut print |
+
+### Switching library
+
+Set `paths.prompts_file` in `config.toml`. The change applies from the next picture:
+
+```toml
+[paths]
+prompts_file = "prompts/planets.json"
+```
+
+To try one library once without changing the config:
+
+```bash
+venv/bin/python src/generate_picture.py --prompts prompts/planets.json && venv/bin/python src/display_picture.py
+```
+
+### Editing or writing a library
+
+* Add or remove entries in any list. Keep the commas between entries and the quotes around each one.
+* Add a whole new list (for example lighting or mood); it becomes another part of every prompt.
+* Use `""` entries to make a part optional. In `planets.json`, three of the detail entries are empty, so about a quarter of pictures have no extra detail.
+* Keep the total prompt short (under about 60 words). SDXL ignores text past its limit.
+* Flat, bold, low-colour styles (prints, posters, flat illustration) look best on the 6-colour panel. Photo-realistic and soft gradient styles dither into noise.
+* Check your file before the next scheduled run:
+
+```bash
+venv/bin/python -m json.tool prompts/planets.json > /dev/null && echo OK
+```
 
 ## Manual commands
 

@@ -39,9 +39,16 @@ def test_choose_prompt_picks_one_from_each_part(tmp_path):
     assert prompt.startswith("a rose as a ")
 
 
-def test_bundled_prompts_file_is_valid():
-    path = os.path.join(config.REPO_ROOT, "prompts", "flowers.json")
-    assert generate_picture.choose_prompt(path)
+@pytest.mark.parametrize("name", sorted(os.listdir(os.path.join(config.REPO_ROOT, "prompts"))))
+def test_bundled_prompts_files_are_valid(name):
+    path = os.path.join(config.REPO_ROOT, "prompts", name)
+    with open(path) as f:
+        parts = json.load(f)
+    assert parts and all(isinstance(p, list) and p for p in parts)
+    assert all(isinstance(x, str) for p in parts for x in p)
+    for _ in range(20):
+        prompt = generate_picture.choose_prompt(path)
+        assert prompt.strip() and len(prompt.split()) < 60
 
 
 def test_safe_name():

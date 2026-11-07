@@ -32,7 +32,8 @@ def choose_prompt(prompts_file, rng=random):
     """
     with open(prompts_file) as f:
         parts = json.load(f)
-    return " ".join(rng.choice(part) for part in parts)
+    picks = (rng.choice(part).strip() for part in parts)
+    return " ".join(p for p in picks if p)  # "" entries make a part optional
 
 
 def safe_name(prompt, seed, steps):
