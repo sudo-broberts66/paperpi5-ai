@@ -100,8 +100,8 @@ After a power cycle:
   holds its image without power.
 
 A picture that was being generated when the power was cut is lost. It isn't
-retried; the next one comes at the next scheduled time. You can also press
-nothing and start one by hand with `sudo systemctl start paperpi.service`.
+retried; the next one comes at the next scheduled time, or you can start
+one by hand with `sudo systemctl start paperpi.service`.
 
 ### Check it after a reboot
 
