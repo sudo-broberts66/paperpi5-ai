@@ -1,0 +1,9 @@
+[Unit]
+Description=PaperPi5-AI: scheduled new picture
+
+[Timer]
+OnCalendar=@ON_CALENDAR@
+Persistent=true
+
+[Install]
+WantedBy=timers.target

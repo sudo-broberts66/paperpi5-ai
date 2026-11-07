@@ -1,0 +1,10 @@
+[Unit]
+Description=PaperPi5-AI: generate and display a new picture
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=@USER@
+WorkingDirectory=@REPO@
+ExecStart=@REPO@/scripts/run_frame.sh
+Nice=10

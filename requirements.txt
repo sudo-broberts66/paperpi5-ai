@@ -1,0 +1,7 @@
+# inky 2.1+ is required for the Spectra 6 Inky Impression and drives the GPIO
+# through gpiod, which works on the Raspberry Pi 5 (inky 1.x / RPi.GPIO does not).
+inky>=2.1
+gpiod>=2.1
+gpiodevice>=0.1.0
+pillow
+numpy

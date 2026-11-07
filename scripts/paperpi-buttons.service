@@ -1,0 +1,13 @@
+[Unit]
+Description=PaperPi5-AI: Inky Impression buttons
+After=local-fs.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@
+ExecStart=@REPO@/venv/bin/python @REPO@/src/display_buttons.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

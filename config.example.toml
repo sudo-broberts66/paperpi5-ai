@@ -1,0 +1,52 @@
+# PaperPi5-AI configuration.
+# Copy to config.toml (install.sh does this for you) and edit config.toml.
+# Relative paths are resolved from the repository root.
+
+[paths]
+images_dir   = "images"
+sd_binary    = "OnnxStream/src/build/sd"
+model_dir    = "models/stable-diffusion-xl-turbo-1.0-anyshape-onnxstream"
+prompts_file = "prompts/flowers.json"
+
+[generate]
+# Inky Impression 7.3" (Spectra 6) is 800x480. Width and height are swapped
+# automatically when display.portrait = true.
+width  = 800
+height = 480
+# SDXL Turbo looks good at 1-4 steps. More steps = slower.
+steps  = 3
+# Load the whole UNET into RAM (fast; fine with 8GB+). Set false if you hit
+# out-of-memory errors.
+ram_mode = true
+# Only for a Pi with very little RAM (Pi Zero 2). Very slow.
+low_mem  = false
+# Keep only the newest N generated images (0 = keep everything).
+keep_images = 0
+# Any extra arguments to pass straight to OnnxStream's sd binary.
+extra_sd_args = []
+
+[display]
+portrait   = false
+# 0.0-1.0. Spectra 6 panels look best around 0.5.
+saturation = 0.5
+# Seconds to wait between generating and refreshing the panel. E-paper colours
+# can suffer if the panel is refreshed while the Pi is still hot.
+delay_seconds = 120
+# Leave empty to auto-detect from the board's EEPROM. If detection fails, set
+# to "spectra73" for the Inky Impression 7.3" (2025 / Spectra 6).
+type = ""
+
+[schedule]
+# systemd OnCalendar expression for generating a new picture.
+# Re-run scripts/install.sh (or scripts/install.sh --services) after changing.
+on_calendar = "*-*-* 06:00:00"
+
+[buttons]
+# BCM GPIO numbers for buttons A-D on the Inky Impression 7.3".
+# (Inky Impression 13.3" uses 25 for button C.)
+pin_a = 5
+pin_b = 6
+pin_c = 16
+pin_d = 24
+# Hold button D this many seconds to shut down.
+shutdown_hold_seconds = 3
