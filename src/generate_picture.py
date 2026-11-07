@@ -27,13 +27,54 @@ CURRENT_FILE = ".current"  # name of the image output.png was copied from
 def choose_prompt(prompts_file, rng=random):
     """Build a prompt by picking one fragment from each list in the JSON file.
 
-    This is the single place prompts come from, so other prompt sources
-    (e.g. a local LLM) can be added here later.
+    Used directly when the LLM is off, and as the fallback when it fails.
     """
     with open(prompts_file) as f:
         parts = json.load(f)
     picks = (rng.choice(part).strip() for part in parts)
     return " ".join(p for p in picks if p)  # "" entries make a part optional
+
+
+def llm_prompt(timeout, python=sys.executable):
+    """Ask src/llm_prompt.py for a prompt in a separate process.
+
+    Returns (prompt, info) or (None, reason). Running it as its own process
+    frees the LLM's memory before Stable Diffusion starts, and a timeout or
+    crash can't take this script down with it.
+    """
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_prompt.py")
+    try:
+        proc = subprocess.run([python, script, "--json"], capture_output=True,
+                              text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, f"timed out after {timeout}s"
+    lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("{")]
+    if not lines:
+        tail = (proc.stderr or proc.stdout).strip().splitlines()[-3:]
+        return None, f"exit code {proc.returncode}: {' | '.join(tail)}"
+    try:
+        result = json.loads(lines[-1])
+    except json.JSONDecodeError:
+        return None, f"bad output: {lines[-1][:200]}"
+    if "prompt" not in result:
+        return None, result.get("error", "no prompt returned")
+    return result["prompt"], result
+
+
+def get_prompt(cfg, explicit="", prompts_file=None, use_llm=None, llm_fn=llm_prompt):
+    """Return (prompt, source). source is "given", "llm" or "library"."""
+    if explicit:
+        return explicit, "given"
+    c = cfg["llm"]
+    if c["enabled"] if use_llm is None else use_llm:
+        print("Asking the local LLM for a prompt...", flush=True)
+        prompt, info = llm_fn(c["timeout_seconds"])
+        if prompt:
+            print(f"LLM inspiration: {', '.join(info.get('inspiration', []))} "
+                  f"({info.get('seconds', '?')}s)")
+            return prompt, "llm"
+        print(f"LLM prompt failed ({info}); using the prompt library instead.", flush=True)
+    return choose_prompt(resolve(prompts_file or cfg["paths"]["prompts_file"])), "library"
 
 
 def safe_name(prompt, seed, steps):
@@ -95,6 +136,11 @@ def main(argv=None):
                     help="Directory to save images (default from config)")
     ap.add_argument("--prompts", default=p["prompts_file"], help="Prompts JSON file")
     ap.add_argument("--prompt", default="", help="Use this exact prompt")
+    llm = ap.add_mutually_exclusive_group()
+    llm.add_argument("--llm", dest="use_llm", action="store_true", default=None,
+                     help="Use the local LLM for the prompt (default from config)")
+    llm.add_argument("--no-llm", dest="use_llm", action="store_false",
+                     help="Use the prompt library, not the LLM")
     ap.add_argument("--seed", type=int, default=None, help="Seed (default random)")
     ap.add_argument("--steps", type=int, default=g["steps"])
     ap.add_argument("--width", type=int, default=None)
@@ -117,7 +163,7 @@ def main(argv=None):
     os.makedirs(output_dir, exist_ok=True)
 
     seed = args.seed if args.seed is not None else random.randint(1, 1_000_000)
-    prompt = args.prompt or choose_prompt(resolve(args.prompts))
+    prompt, source = get_prompt(cfg, args.prompt, args.prompts, args.use_llm)
     fullpath = os.path.join(output_dir, safe_name(prompt, seed, args.steps) + ".png")
 
     cmd = build_command(
@@ -127,7 +173,7 @@ def main(argv=None):
         extra_args=[str(a) for a in g["extra_sd_args"]],
     )
 
-    print(f"Prompt: {prompt}")
+    print(f"Prompt ({source}): {prompt}")
     print(f"Seed: {seed}  Steps: {args.steps}  Size: {width}x{height}")
     print("Command: " + " ".join(cmd), flush=True)
     if args.dry_run:
@@ -145,7 +191,8 @@ def main(argv=None):
         return 1
 
     with open(os.path.splitext(fullpath)[0] + ".txt", "w") as f:
-        f.write(f"{prompt}\nseed={seed} steps={args.steps} size={width}x{height}\n")
+        f.write(f"{prompt}\nseed={seed} steps={args.steps} size={width}x{height} "
+                f"source={source}\n")
 
     shared = os.path.join(output_dir, SHARED_FILE)
     shutil.copy2(fullpath, shared)

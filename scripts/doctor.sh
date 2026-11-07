@@ -2,14 +2,22 @@
 # PaperPi5-AI diagnostics. Checks the display wiring/config, the Python
 # environment, the Stable Diffusion build and the model.
 #
-# Usage: scripts/doctor.sh [--generate]
+# Usage: scripts/doctor.sh [--generate] [--llm]
 #   --generate  also make a small 1-step test image (takes a minute or two)
+#   --llm       also ask the local LLM for a test prompt (takes up to a minute)
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="$REPO/venv/bin/python"
 BOOT_CONFIG="/boot/firmware/config.txt"
 [[ -f "$BOOT_CONFIG" ]] || BOOT_CONFIG="/boot/config.txt"
 FAILS=0
+TEST_GENERATE=0; TEST_LLM=0
+for arg in "$@"; do
+    case "$arg" in
+        --generate) TEST_GENERATE=1 ;;
+        --llm) TEST_LLM=1 ;;
+    esac
+done
 
 pass() { printf '\033[1;32mPASS\033[0m %s\n' "$1"; }
 fail() { printf '\033[1;31mFAIL\033[0m %s\n     fix: %s\n' "$1" "$2"; FAILS=$((FAILS + 1)); }
@@ -81,6 +89,15 @@ if [[ -x "$PY" ]]; then
     else fail "OnnxStream sd binary missing ($SD_BIN)" "scripts/install.sh"; fi
     if out=$("$PY" "$REPO/src/check_model.py" "$MODEL_DIR" 2>&1); then pass "$out"
     else fail "Model problem: $out" "re-run scripts/install.sh to resume the download"; fi
+
+    # --- Local LLM ---------------------------------------------------------
+    LLM_ENABLED="$("$PY" "$REPO/src/config.py" llm.enabled)"
+    if [[ "$LLM_ENABLED" == "true" ]]; then
+        if out=$("$PY" "$REPO/src/check_llm.py" 2>&1); then pass "$out"
+        else fail "LLM problem: $(echo "$out" | tr '\n' ' ')" "scripts/install.sh --llm"; fi
+    else
+        info "Local LLM prompts are off (llm.enabled = false); using the prompt library"
+    fi
 fi
 
 free_gb=$(( $(df --output=avail -k "$REPO" | tail -1) / 1024 / 1024 ))
@@ -94,12 +111,18 @@ if systemctl is-active paperpi-buttons.service > /dev/null 2>&1; then pass "pape
 else fail "paperpi-buttons.service not running" "journalctl -u paperpi-buttons.service -n 30"; fi
 
 # --- Optional generation test --------------------------------------------
-if [[ "${1:-}" == "--generate" && $FAILS -eq 0 ]]; then
+if [[ $TEST_LLM -eq 1 && $FAILS -eq 0 ]]; then
+    echo; echo "Asking the local LLM for a test prompt..."
+    if "$PY" "$REPO/src/llm_prompt.py"; then pass "LLM wrote a prompt"
+    else fail "LLM test failed" "see the error above; scripts/install.sh --llm --rebuild"; fi
+fi
+
+if [[ $TEST_GENERATE -eq 1 && $FAILS -eq 0 ]]; then
     echo; echo "Generating a 1-step 512x512 test image..."
     tmp="$(mktemp -d)"
     start=$(date +%s)
     if "$PY" "$REPO/src/generate_picture.py" "$tmp" --steps 1 --width 512 --height 512 \
-        --prompt "a red apple on a white table, flat illustration"; then
+        --no-llm --prompt "a red apple on a white table, flat illustration"; then
         pass "Test image generated in $(( $(date +%s) - start ))s: $(ls "$tmp"/*.png | head -1)"
     else
         fail "Test generation failed" "try scripts/install.sh --rebuild; see output above"

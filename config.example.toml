@@ -25,6 +25,30 @@ keep_images = 0
 # Any extra arguments to pass straight to OnnxStream's sd binary.
 extra_sd_args = []
 
+[llm]
+# Let a small local language model write each prompt. If it fails for any
+# reason, the plain prompt library (paths.prompts_file) is used instead.
+enabled = true
+# What every picture should be. Change this to change the frame's subject.
+theme = "a sci-fi landscape on an alien planet"
+# Random fragments from this library are given to the LLM as inspiration.
+# With keep_style = true, the library's last list (art styles) is not shown to
+# the LLM; one style is appended to its prompt unchanged.
+inspiration_file = "prompts/planets.json"
+keep_style = true
+# Higher = more surprising ideas, lower = safer. 0.6-1.1 is a good range.
+temperature = 0.9
+# Maximum words in the LLM's scene description.
+max_words = 35
+# Show the LLM this many recent prompts and ask for something different.
+recent_count = 8
+threads = 4
+# Give up and use the prompt library if the LLM takes longer than this.
+timeout_seconds = 300
+model = "models/llm/qwen2.5-3b-instruct-q4_k_m.gguf"
+# Where install.sh downloads the model from.
+model_url = "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+
 [display]
 portrait   = false
 # 0.0-1.0. Spectra 6 panels look best around 0.5.

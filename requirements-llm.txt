@@ -1,0 +1,3 @@
+# Local LLM for writing prompts. Compiled from source on the Pi (no prebuilt
+# wheels for aarch64), which needs build-essential and cmake.
+llama-cpp-python>=0.3,<0.4

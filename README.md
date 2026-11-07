@@ -200,6 +200,8 @@ Edit `config.toml` (created from `config.example.toml`). The main settings:
 | `display.saturation` | 0.5 | Colour saturation used when dithering to the 6 inks |
 | `display.delay_seconds` | 120 | Let the Pi cool before refreshing the panel |
 | `display.type` | "" | Auto-detect. Set `"spectra73"` if detection fails |
+| `llm.enabled` | true | Let the local LLM write prompts (see below) |
+| `llm.theme` | alien planet landscape | What the LLM is asked to describe |
 | `schedule.on_calendar` | `*-*-* 06:00:00` | systemd [OnCalendar](https://www.freedesktop.org/software/systemd/man/systemd.time.html#Calendar%20Events) format |
 
 After changing `schedule.on_calendar`, run `scripts/install.sh --services`.
@@ -230,6 +232,10 @@ Bundled libraries:
 
 ### Switching library
 
+When [Local LLM prompts](#local-llm-prompts) are on, the LLM takes its ideas
+from `llm.inspiration_file`, and `paths.prompts_file` is only the fallback.
+With the LLM off, `paths.prompts_file` is used for every picture.
+
 Set `paths.prompts_file` in `config.toml`. The change applies from the next picture:
 
 ```toml
@@ -255,6 +261,94 @@ venv/bin/python src/generate_picture.py --prompts prompts/planets.json && venv/b
 ```bash
 venv/bin/python -m json.tool prompts/planets.json > /dev/null && echo OK
 ```
+
+## Local LLM prompts
+
+A small language model running on the Pi writes each picture's prompt, so
+every picture gets a fresh description instead of joined fragments. It's
+fully offline once installed.
+
+For each picture:
+
+1. A few random fragments are picked from `llm.inspiration_file`
+   (`prompts/planets.json`): for example a landscape, a sky and a detail.
+2. The LLM ([Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF),
+   run by [llama.cpp](https://github.com/ggml-org/llama.cpp)) is asked for one
+   short scene on `llm.theme`, inspired by those fragments, in a style suited
+   to the 6-colour panel, and different from the last few prompts.
+3. Its reply is cleaned up to one line, and an art style from the library's
+   last list is added (for example "as a linocut print").
+4. Stable Diffusion draws it, as before. The prompt is saved in the `.txt`
+   next to the picture, ending in `source=llm`.
+
+**If the LLM fails** (missing model, crash, odd reply, or it takes longer than
+`llm.timeout_seconds`), the picture is made from the prompt library
+(`paths.prompts_file`) instead, ending in `source=library`. A bad LLM run
+never costs a picture.
+
+The LLM runs as a separate process that exits before Stable Diffusion starts,
+so the two never share memory. Writing a prompt should take under a minute on a Pi 5.
+
+### Installing
+
+New installs get the LLM automatically from `scripts/install.sh`. To add it to
+an existing install, from the `paperpi5-ai` folder:
+
+```bash
+scripts/install.sh --llm
+```
+
+This compiles `llama-cpp-python` (roughly 10-20 minutes) and downloads the
+~2 GB model to `models/llm/`. If the download is interrupted, run it again to resume. Then check it:
+
+```bash
+scripts/doctor.sh --llm
+```
+
+### Trying prompts
+
+Write a few prompts without making pictures:
+
+```bash
+venv/bin/python src/llm_prompt.py --count 5
+```
+
+Try a different theme once:
+
+```bash
+venv/bin/python src/llm_prompt.py --count 3 --theme "an underwater city on an ocean moon"
+```
+
+Make one picture with or without the LLM, whatever the config says:
+
+```bash
+venv/bin/python src/generate_picture.py --llm
+```
+
+```bash
+venv/bin/python src/generate_picture.py --no-llm
+```
+
+### Settings (`[llm]` in `config.toml`)
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| `enabled` | true | false = use only the prompt library |
+| `theme` | "a sci-fi landscape on an alien planet" | The frame's subject. Change it to anything |
+| `inspiration_file` | `prompts/planets.json` | Random fragments from here steer each prompt |
+| `keep_style` | true | Take the art style from the library's last list instead of letting the LLM choose |
+| `temperature` | 0.9 | Higher = more surprising, lower = safer (0.6-1.1) |
+| `max_words` | 35 | Length of the LLM's scene description |
+| `recent_count` | 8 | How many recent prompts it's asked to avoid repeating |
+| `timeout_seconds` | 300 | Fall back to the library after this long |
+| `model`, `model_url` | Qwen2.5-3B Q4_K_M | Any instruct GGUF model works; run `scripts/install.sh --llm` after changing |
+
+If you change `theme` to something other than planets, point
+`inspiration_file` at a matching library too (or set `keep_style = true` with
+a library whose last list is styles, such as `flowers.json`).
+
+The default model's license ([Qwen Research License](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct/blob/main/LICENSE))
+allows personal, non-commercial use, which covers a home picture frame.
 
 ## Manual commands
 
@@ -295,6 +389,11 @@ Re-run `scripts/install.sh` to resume, then `venv/bin/python src/check_model.py`
 **Generation crashes or produces garbage**: rebuild OnnxStream with
 `scripts/install.sh --rebuild`. If it's out of memory, set `generate.ram_mode = false`.
 
+**LLM prompts not being used** (`source=library` in the `.txt` files): run
+`scripts/doctor.sh --llm`, and check the reason in
+`journalctl -u paperpi.service -n 100` (look for "LLM prompt failed").
+`scripts/install.sh --llm --rebuild` recompiles llama.cpp if it crashes.
+
 **Washed-out or odd colours**: try `display.saturation` between 0.3 and 0.8.
 E-paper is also temperature-sensitive, so increase `display.delay_seconds` if
 the Pi runs hot.
@@ -317,14 +416,10 @@ The non-hardware parts have tests (no Pi needed):
 pip install pytest pillow numpy && python -m pytest tests
 ```
 
-## Planned
-
-* Local LLM prompt generation (llama.cpp): the Pi 5's 16 GB makes this
-  practical. Prompts all come from `choose_prompt()` in
-  `src/generate_picture.py`, which is where it will plug in.
-
 ## Credits
 
 * [dylski/PaperPiAI](https://github.com/dylski/PaperPiAI): the original project
 * [vitoplantamura/OnnxStream](https://github.com/vitoplantamura/OnnxStream): Stable Diffusion on the Raspberry Pi
 * [pimoroni/inky](https://github.com/pimoroni/inky): display driver
+* [llama.cpp](https://github.com/ggml-org/llama.cpp) and [llama-cpp-python](https://github.com/abetlen/llama-cpp-python): local LLM
+* [Qwen2.5](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF): the default prompt-writing model

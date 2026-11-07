@@ -4,9 +4,11 @@
 #
 # Safe to re-run: finished steps are skipped.
 #
-# Usage: scripts/install.sh [--services] [--skip-model] [--rebuild] [--help]
+# Usage: scripts/install.sh [--services] [--llm] [--skip-model] [--skip-llm] [--rebuild] [--help]
 #   --services    only (re)install the systemd services and timer
-#   --skip-model  don't download the ~8GB model now
+#   --llm         only install/update the local LLM for prompts
+#   --skip-model  don't download the ~8GB image model now
+#   --skip-llm    don't install the local LLM (prompts come from prompts/*.json)
 #   --rebuild     rebuild OnnxStream even if it is already built
 set -euo pipefail
 
@@ -20,13 +22,15 @@ BOOT_CONFIG="/boot/firmware/config.txt"
 [[ -f "$BOOT_CONFIG" ]] || BOOT_CONFIG="/boot/config.txt"
 RUN_USER="${SUDO_USER:-$USER}"
 
-ONLY_SERVICES=0; SKIP_MODEL=0; REBUILD=0; REBOOT_NEEDED=0
+ONLY_SERVICES=0; ONLY_LLM=0; SKIP_MODEL=0; SKIP_LLM=0; REBUILD=0; REBOOT_NEEDED=0
 for arg in "$@"; do
     case "$arg" in
         --services) ONLY_SERVICES=1 ;;
+        --llm) ONLY_LLM=1 ;;
         --skip-model) SKIP_MODEL=1 ;;
+        --skip-llm) SKIP_LLM=1 ;;
         --rebuild) REBUILD=1 ;;
-        -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
         *) echo "Unknown option: $arg"; exit 1 ;;
     esac
 done
@@ -61,7 +65,7 @@ install_apt() {
     step "Installing system packages"
     sudo apt-get update
     sudo apt-get install -y build-essential cmake git git-lfs \
-        python3-dev python3-venv python3-pip i2c-tools
+        python3-dev python3-venv python3-pip i2c-tools curl
 }
 
 enable_interfaces() {
@@ -157,6 +161,40 @@ download_model() {
     rm -rf "$model_dir/.git/lfs/objects"
 }
 
+install_llm() {
+    step "Installing the local LLM for prompts (llama.cpp)"
+    if "$PY" -c "import llama_cpp" 2> /dev/null && [[ $REBUILD -eq 0 ]]; then
+        echo "llama-cpp-python already installed (use --rebuild to rebuild)"
+    else
+        # Compiles llama.cpp for this CPU. Takes roughly 10-20 minutes on a Pi 5.
+        echo "Compiling llama-cpp-python (this takes a while)..."
+        local force=()
+        [[ $REBUILD -eq 1 ]] && force=(--force-reinstall --no-deps)
+        CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" "$PY" -m pip install --upgrade \
+            --no-cache-dir "${force[@]}" -r "$REPO/requirements-llm.txt"
+    fi
+
+    local model url
+    model="$("$PY" "$REPO/src/config.py" llm.model)"
+    url="$("$PY" "$REPO/src/config.py" llm.model_url)"
+    if "$PY" "$REPO/src/check_llm.py" > /dev/null 2>&1; then
+        echo "LLM model already downloaded: $model"
+        return
+    fi
+    mkdir -p "$(dirname "$model")"
+    echo "Downloading $(basename "$model") (~2 GB)"
+    local attempt ok=0
+    for attempt in 1 2 3; do
+        # -C - resumes a partial download (re-running the script resumes too).
+        if curl -fL --retry 3 -C - -o "$model.part" "$url"; then ok=1; break; fi
+        warn "Download failed (attempt $attempt); retrying in 10s"
+        sleep 10
+    done
+    [[ $ok -eq 1 ]] || die "Could not download $url. Re-run: scripts/install.sh --llm"
+    mv "$model.part" "$model"
+    "$PY" "$REPO/src/check_llm.py" || die "LLM model download looks wrong. Re-run: scripts/install.sh --llm"
+}
+
 setup_config() {
     step "Configuration"
     if [[ ! -f "$REPO/config.toml" ]]; then
@@ -192,6 +230,11 @@ install_services() {
 }
 
 cd "$REPO"
+if [[ $ONLY_LLM -eq 1 ]]; then
+    [[ -x "$PY" ]] || die "Run the full install first."
+    install_llm
+    exit 0
+fi
 if [[ $ONLY_SERVICES -eq 1 ]]; then
     [[ -x "$PY" ]] || die "Run the full install first."
     install_services
@@ -205,6 +248,7 @@ install_python
 setup_config
 build_onnxstream
 if [[ $SKIP_MODEL -eq 0 ]]; then download_model; else warn "Skipping model download (--skip-model)"; fi
+if [[ $SKIP_LLM -eq 0 ]]; then install_llm; else warn "Skipping the local LLM (--skip-llm)"; fi
 install_services
 
 step "Done"
