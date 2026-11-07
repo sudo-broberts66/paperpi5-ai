@@ -86,6 +86,107 @@ journalctl -fu paperpi.service
   * **D**: hold for 3 s to shut down safely
 * Pictures (and a `.txt` with each prompt) are saved in `images/`.
 
+## Running on its own
+
+Once `scripts/install.sh` has finished, the frame needs no further setup.
+After a power cycle:
+
+* **The picture timer is enabled at boot.** It makes a new picture at each
+  scheduled time.
+* **Missed pictures catch up.** If the Pi was off at a scheduled time, that
+  picture is made shortly after the next boot (the timer uses `Persistent=true`).
+* **The button service starts at boot.**
+* **The screen keeps the last picture with the power off**, because e-paper
+  holds its image without power.
+
+A picture that was being generated when the power was cut is lost. It isn't
+retried; the next one comes at the next scheduled time. You can also press
+nothing and start one by hand with `sudo systemctl start paperpi.service`.
+
+### Check it after a reboot
+
+```bash
+systemctl list-timers paperpi.timer
+```
+
+The NEXT column shows when the next picture will be made.
+
+```bash
+systemctl is-enabled paperpi.timer paperpi-buttons.service
+```
+
+Both should say `enabled`. `scripts/doctor.sh` checks these along with everything else.
+
+### Worth doing once
+
+1. **Set the time zone.** The schedule uses the Pi's local time. If `date`
+   shows the wrong time, set your zone with `sudo raspi-config` →
+   Localisation Options → Timezone.
+2. **Shut down with button D** (hold 3 s) rather than pulling the plug.
+   Cutting power while the Pi is writing can corrupt the SD card. Unplug once
+   the green light stops flashing.
+3. **Leave Wi-Fi connected if you can.** Generating doesn't need the internet,
+   but the Pi 5 has no clock battery unless you fit one, so it gets the time
+   from the network at boot. Without it, the clock (and so the schedule) can be wrong.
+4. **Optionally limit stored pictures** with `generate.keep_images = 365` in
+   `config.toml` (keeps the newest 365). Each picture is only about 1 MB.
+
+## Changing the schedule
+
+How often and when new pictures are made is set by one line in `config.toml`:
+
+```toml
+[schedule]
+on_calendar = "*-*-* 06:00:00"
+```
+
+The format is `day-of-week year-month-day hour:minute:second`, where `*`
+means "every". So `*-*-* 06:00:00` means every day at 06:00.
+
+### Examples
+
+| Pictures | `on_calendar` |
+| --- | --- |
+| Once a day at 6am | `"*-*-* 06:00:00"` |
+| Twice a day, 6am and 6pm | `"*-*-* 06,18:00:00"` |
+| Three times a day, 7am, 1pm and 7pm | `"*-*-* 07,13,19:00:00"` |
+| Every 4 hours (00:00, 04:00, 08:00 ...) | `"*-*-* 00/4:00:00"` |
+| Every 3 hours from 8am to 8pm | `"*-*-* 08..20/3:00:00"` |
+| Every hour | `"hourly"` |
+| Weekdays at 7am | `"Mon..Fri *-*-* 07:00:00"` |
+| Weekends at 9:30am | `"Sat,Sun *-*-* 09:30:00"` |
+| Once a week, Monday 6am | `"Mon *-*-* 06:00:00"` |
+
+* Hours use the 24-hour clock in the Pi's local time zone.
+* `a,b,c` lists times, `a..b` is a range, and `/n` means "every n".
+
+### Apply the change
+
+After editing `config.toml`, reinstall the timer. This only takes a few seconds:
+
+```bash
+scripts/install.sh --services
+```
+
+Then check the next run time:
+
+```bash
+systemctl list-timers paperpi.timer
+```
+
+To check a schedule before using it, ask systemd to list its next few times:
+
+```bash
+systemd-analyze calendar --iterations=5 "*-*-* 06,18:00:00"
+```
+
+### How often is too often?
+
+Each picture takes a few minutes to generate, plus `display.delay_seconds`
+(2 minutes by default) before the screen refreshes. A run never overlaps the
+previous one. Every 30-60 minutes is a sensible minimum. Refreshing far more
+often than that keeps the Pi hot, and e-paper colours look worse when the panel is warm.
+
 ## Configuration
 
 Edit `config.toml` (created from `config.example.toml`). The main settings:
