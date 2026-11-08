@@ -5,6 +5,12 @@ import cleanup
 import config
 
 DAY = 86400
+PNG_END = b"\x00\x00\x00\x00IEND\xaeB`\x82"
+
+
+def fake_png(size=1000):
+    """Bytes that pass cleanup.is_png (signature + IEND), padded to `size`."""
+    return cleanup.PNG_SIGNATURE + b"x" * max(0, size - 20) + PNG_END
 
 
 def _images(d, ages_days, size=1000):
@@ -13,7 +19,7 @@ def _images(d, ages_days, size=1000):
     paths = []
     for i, age in enumerate(ages_days):
         p = d / f"img{i}.png"
-        p.write_bytes(b"x" * size)
+        p.write_bytes(fake_png(size))
         (d / f"img{i}.txt").write_text("prompt")
         t = now - age * DAY
         os.utime(p, (t, t))
@@ -98,3 +104,43 @@ def test_legacy_generate_keep_images(tmp_path):
 
 def test_defaults():
     assert config.DEFAULTS["storage"] == {"keep_images": 0, "keep_days": 30, "min_free_gb": 2}
+
+
+def _age(path, seconds):
+    t = time.time() - seconds
+    os.utime(path, (t, t))
+
+
+def test_is_png(tmp_path):
+    from PIL import Image
+
+    real = tmp_path / "real.png"
+    Image.new("RGB", (4, 4)).save(real)
+    assert cleanup.is_png(str(real))
+    data = real.read_bytes()
+    (tmp_path / "cut.png").write_bytes(data[:-20])          # cut off mid-write
+    (tmp_path / "empty.png").write_bytes(b"")
+    (tmp_path / "junk.png").write_bytes(b"not a png at all" * 10)
+    for name in ("cut.png", "empty.png", "junk.png", "missing.png"):
+        assert not cleanup.is_png(str(tmp_path / name)), name
+
+
+def test_broken_pictures_are_skipped_and_cleaned(tmp_path):
+    _images(tmp_path, [1, 2])
+    broken = tmp_path / "frozen_ice_fields.png"     # newest by time, but empty
+    broken.write_bytes(b"")
+    (tmp_path / "frozen_ice_fields.txt").write_text("p")
+    _age(broken, 700)
+    fresh = tmp_path / "just_started.png"           # too new to judge yet
+    fresh.write_bytes(b"")
+    stale = tmp_path / ".generating-old.png"        # left by a power cut
+    stale.write_bytes(b"partial")
+    _age(stale, 3 * 3600)
+    running = tmp_path / ".generating-now.png"      # generation in progress
+    running.write_bytes(b"partial")
+
+    assert names(cleanup.list_images(str(tmp_path))) == ["img0.png", "img1.png"]
+    removed = cleanup.cleanup(_cfg(tmp_path, keep_days=0), log=lambda m: None)
+    assert names(removed) == [".generating-old.png", "frozen_ice_fields.png"]
+    assert not broken.exists() and not (tmp_path / "frozen_ice_fields.txt").exists()
+    assert fresh.exists() and running.exists() and not stale.exists()

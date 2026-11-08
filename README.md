@@ -464,6 +464,20 @@ This only prints presses. Press Ctrl+C when done, then
 nothing in test mode, check its pin under `[buttons]` in `config.toml`
 (the 7.3" uses A=5, B=6, C=16, D=24).
 
+**`cannot identify image file` / a picture that won't display**: a picture
+file is broken, usually because the power was cut while it was being made.
+New pictures are written under a hidden temporary name and only appear once
+complete, and cleanup deletes broken files automatically. To check and remove
+any now:
+
+```bash
+venv/bin/python src/cleanup.py --dry-run
+```
+
+```bash
+venv/bin/python src/cleanup.py
+```
+
 **Washed-out or odd colours**: try `display.saturation` between 0.3 and 0.8.
 E-paper is also temperature-sensitive, so increase `display.delay_seconds` if
 the Pi runs hot.

@@ -10,7 +10,7 @@ import fcntl
 import os
 import sys
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import load_config, resolve  # noqa: E402
@@ -91,7 +91,13 @@ def main(argv=None):
         panel_w, panel_h = inky.resolution
         print(f"Display: {type(inky).__module__} {panel_w}x{panel_h}")
 
-    image = prepare(image_path, panel_w, panel_h, args.portrait, mode)
+    try:
+        image = prepare(image_path, panel_w, panel_h, args.portrait, mode)
+    except (UnidentifiedImageError, OSError) as e:
+        print(f"ERROR: {image_path} is not a readable image ({e}). It may be a broken "
+              "file from an interrupted run; venv/bin/python src/cleanup.py removes those.",
+              file=sys.stderr)
+        return 1
 
     if args.output:
         image.save(resolve(args.output))

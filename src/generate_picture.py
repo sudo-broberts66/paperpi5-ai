@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cleanup import cleanup, list_images  # noqa: E402,F401  (list_images used by buttons)
+from cleanup import cleanup, is_png, list_images  # noqa: E402,F401  (list_images used by buttons)
 from config import load_config, resolve  # noqa: E402
 
 SHARED_FILE = "output.png"
@@ -140,11 +140,15 @@ def main(argv=None):
 
     seed = args.seed if args.seed is not None else random.randint(1, 1_000_000)
     prompt, source = get_prompt(cfg, args.prompt, args.prompts, args.use_llm)
-    fullpath = os.path.join(output_dir, safe_name(prompt, seed, args.steps) + ".png")
+    name = safe_name(prompt, seed, args.steps) + ".png"
+    fullpath = os.path.join(output_dir, name)
+    # OnnxStream writes to a hidden temporary file, renamed only once complete,
+    # so an interrupted run (e.g. a power cut) can't leave a broken picture.
+    partial = os.path.join(output_dir, ".generating-" + name)
 
     cmd = build_command(
         resolve(args.sd), resolve(args.model), prompt, seed, args.steps,
-        width, height, fullpath,
+        width, height, partial,
         ram_mode=g["ram_mode"], low_mem=g["low_mem"],
         extra_args=[str(a) for a in g["extra_sd_args"]],
     )
@@ -161,8 +165,15 @@ def main(argv=None):
         return 1
 
     cleanup(cfg, output_dir)  # make room first if the card is getting full
-    result = subprocess.run(cmd)
-    if result.returncode != 0 or not os.path.exists(fullpath):
+    try:
+        result = subprocess.run(cmd)
+        ok = result.returncode == 0 and is_png(partial)
+        if ok:
+            os.replace(partial, fullpath)
+    finally:
+        if os.path.exists(partial):
+            os.remove(partial)
+    if not ok:
         print(f"ERROR: image generation failed (exit code {result.returncode}).",
               file=sys.stderr)
         return 1

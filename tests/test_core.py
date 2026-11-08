@@ -286,3 +286,49 @@ def test_button_main_loop_with_fake_gpio(tmp_path, monkeypatch, capsys):
     # B -> b, A -> c (newest), B -> b, C -> c; D tap does nothing.
     assert shown == ["b.png", "c.png", "b.png", "c.png"]
     assert "hold for 3s to shut down" in capsys.readouterr().out
+
+
+def test_display_reports_unreadable_image(tmp_path, capsys):
+    bad = tmp_path / "output.png"
+    bad.write_bytes(b"")
+    assert display_picture.main([str(bad), "-s"]) == 1
+    assert "not a readable image" in capsys.readouterr().err
+
+
+def _fake_sd(tmp_path, body):
+    """A stand-in for OnnxStream's sd binary: writes (or not) the --output file."""
+    script = tmp_path / "sd"
+    script.write_text(f"""#!{sys.executable}
+import sys
+out = sys.argv[sys.argv.index("--output") + 1]
+{body}
+""")
+    script.chmod(0o755)
+    return str(script)
+
+
+def test_generate_writes_hidden_file_then_renames(tmp_path):
+    img_dir = tmp_path / "imgs"
+    sd = _fake_sd(tmp_path, """
+assert "/.generating-" in out
+from PIL import Image
+Image.new("RGB", (800, 480), "red").save(out)
+""")
+    assert generate_picture.main([str(img_dir), "--sd", sd, "--prompt", "red sky",
+                                  "--seed", "7"]) == 0
+    files = sorted(os.listdir(img_dir))
+    assert "red_sky_seed_7_steps_3.png" in files and "output.png" in files
+    assert not [f for f in files if f.startswith(".generating-")]
+    assert (img_dir / ".current").read_text() == "red_sky_seed_7_steps_3.png"
+
+
+@pytest.mark.parametrize("body", [
+    "open(out, 'wb').write(b'\\x89PNG half')",          # cut off
+    "open(out, 'wb').write(b''); sys.exit(1)",          # crashed
+    "sys.exit(0)",                                     # wrote nothing
+])
+def test_generate_failure_leaves_no_picture(tmp_path, body):
+    img_dir = tmp_path / "imgs"
+    assert generate_picture.main([str(img_dir), "--sd", _fake_sd(tmp_path, body),
+                                  "--prompt", "red sky"]) == 1
+    assert [f for f in os.listdir(img_dir) if f.endswith(".png")] == []
