@@ -76,14 +76,10 @@ def _make_images(d, names):
         os.utime(path, (now - 100 + i, now - 100 + i))  # later in list = newer
 
 
-def test_list_and_prune_images(tmp_path):
+def test_list_images(tmp_path):
     _make_images(tmp_path, ["old.png", "mid.png", "new.png", "output.png"])
     assert [os.path.basename(p) for p in generate_picture.list_images(tmp_path)] == \
-        ["output.png", "new.png", "mid.png", "old.png"][1:]
-    removed = generate_picture.prune_images(str(tmp_path), 2)
-    assert [os.path.basename(p) for p in removed] == ["old.png"]
-    assert not (tmp_path / "old.txt").exists()
-    assert generate_picture.prune_images(str(tmp_path), 0) == []
+        ["new.png", "mid.png", "old.png"]
 
 
 def test_generate_dry_run(capsys):

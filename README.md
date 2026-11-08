@@ -128,8 +128,8 @@ Both should say `enabled`. `scripts/doctor.sh` checks these along with everythin
 3. **Leave Wi-Fi connected if you can.** Generating doesn't need the internet,
    but the Pi 5 has no clock battery unless you fit one, so it gets the time
    from the network at boot. Without it, the clock (and so the schedule) can be wrong.
-4. **Optionally limit stored pictures** with `generate.keep_images = 365` in
-   `config.toml` (keeps the newest 365). Each picture is only about 1 MB.
+4. **Old pictures are deleted automatically** after 30 days, and sooner if
+   the card gets low on space. See [Storage and old pictures](#storage-and-old-pictures).
 
 ## Changing the schedule
 
@@ -200,7 +200,7 @@ Edit `config.toml` (created from `config.example.toml`). The main settings:
 | --- | --- | --- |
 | `generate.steps` | 3 | SDXL Turbo looks good at 1-4 |
 | `generate.ram_mode` | true | Fast. Set false if you run out of memory |
-| `generate.keep_images` | 0 | Keep only the newest N images (0 = all) |
+| `storage.keep_days` | 30 | Delete pictures older than this (see [Storage](#storage-and-old-pictures)) |
 | `display.portrait` | false | Portrait images, rotated onto the panel |
 | `display.saturation` | 0.5 | Colour saturation used when dithering to the 6 inks |
 | `display.delay_seconds` | 120 | Let the Pi cool before refreshing the panel |
@@ -212,6 +212,50 @@ Edit `config.toml` (created from `config.example.toml`). The main settings:
 After changing `schedule.on_calendar`, run `scripts/install.sh --services`.
 
 See [Prompt libraries](#prompt-libraries) to change what gets drawn.
+
+## Storage and old pictures
+
+Old pictures are deleted automatically so the SD card never fills up. Each
+picture is about 1 MB, plus a tiny `.txt` with its prompt. At one an hour,
+that's about 0.7 GB a month.
+
+Three rules under `[storage]` in `config.toml`. A picture is deleted if **any**
+rule applies:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `keep_images` | 0 (no limit) | Keep only the newest N pictures |
+| `keep_days` | 30 | Delete pictures older than N days |
+| `min_free_gb` | 2 | Safety net: if free space drops below this, delete the oldest pictures until it's back above it |
+
+* The newest picture is never deleted.
+* Set a rule to `0` to turn it off. Keep `min_free_gb` on so the card can't fill even if you turn the others off.
+* Cleanup runs before and after every new picture, so a change applies from the next picture.
+* The A/B/C buttons can only step back through pictures that are still kept.
+
+For example, to keep a week of hourly pictures:
+
+```toml
+[storage]
+keep_images = 168
+keep_days = 0
+min_free_gb = 2
+```
+
+If your `config.toml` was created before this feature, it has no `[storage]`
+section, so the defaults above apply. Add the section to change them.
+
+To see what's stored and what would be deleted, without deleting anything:
+
+```bash
+venv/bin/python src/cleanup.py --dry-run
+```
+
+To clean up now instead of waiting for the next picture:
+
+```bash
+venv/bin/python src/cleanup.py
+```
 
 ## Prompt libraries
 

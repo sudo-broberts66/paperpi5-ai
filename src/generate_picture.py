@@ -18,6 +18,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cleanup import cleanup, list_images  # noqa: E402,F401  (list_images used by buttons)
 from config import load_config, resolve  # noqa: E402
 
 SHARED_FILE = "output.png"
@@ -102,31 +103,6 @@ def build_command(sd_binary, model_dir, prompt, seed, steps, width, height,
     return cmd
 
 
-def list_images(images_dir):
-    """Generated PNGs, newest first, excluding output.png."""
-    files = [
-        os.path.join(images_dir, f)
-        for f in os.listdir(images_dir)
-        if f.endswith(".png") and f != SHARED_FILE
-    ]
-    files.sort(key=os.path.getmtime, reverse=True)
-    return files
-
-
-def prune_images(images_dir, keep):
-    """Delete all but the newest `keep` images (and their .txt files)."""
-    if keep <= 0:
-        return []
-    removed = []
-    for path in list_images(images_dir)[keep:]:
-        os.remove(path)
-        txt = os.path.splitext(path)[0] + ".txt"
-        if os.path.exists(txt):
-            os.remove(txt)
-        removed.append(path)
-    return removed
-
-
 def main(argv=None):
     cfg = load_config()
     g, p = cfg["generate"], cfg["paths"]
@@ -184,6 +160,7 @@ def main(argv=None):
               file=sys.stderr)
         return 1
 
+    cleanup(cfg, output_dir)  # make room first if the card is getting full
     result = subprocess.run(cmd)
     if result.returncode != 0 or not os.path.exists(fullpath):
         print(f"ERROR: image generation failed (exit code {result.returncode}).",
@@ -200,8 +177,7 @@ def main(argv=None):
         f.write(os.path.basename(fullpath))
     print(f"Saved {fullpath}\nCopied to {shared}")
 
-    for removed in prune_images(output_dir, g["keep_images"]):
-        print(f"Pruned {removed}")
+    cleanup(cfg, output_dir)
     return 0
 
 

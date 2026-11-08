@@ -24,8 +24,12 @@ DEFAULTS = {
         "steps": 3,
         "ram_mode": True,
         "low_mem": False,
-        "keep_images": 0,
         "extra_sd_args": [],
+    },
+    "storage": {
+        "keep_images": 0,
+        "keep_days": 30,
+        "min_free_gb": 2,
     },
     "llm": {
         "enabled": True,

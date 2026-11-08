@@ -102,7 +102,10 @@ fi
 
 free_gb=$(( $(df --output=avail -k "$REPO" | tail -1) / 1024 / 1024 ))
 if [[ $free_gb -ge 2 ]]; then pass "Disk space: ${free_gb} GB free"
-else fail "Only ${free_gb} GB free" "set generate.keep_images in config.toml or delete old images"; fi
+else fail "Only ${free_gb} GB free" "lower storage.keep_days or keep_images in config.toml, then: venv/bin/python src/cleanup.py"; fi
+if [[ -x "$PY" ]]; then
+    "$PY" "$REPO/src/cleanup.py" --dry-run 2>&1 | grep -E "^(Pictures|Rules|Would free)" | sed 's/^/     /'
+fi
 
 if [[ -x "$PY" ]]; then
     ON_CAL="$("$PY" "$REPO/src/config.py" schedule.on_calendar)"

@@ -20,10 +20,21 @@ steps  = 3
 ram_mode = true
 # Only for a Pi with very little RAM (Pi Zero 2). Very slow.
 low_mem  = false
-# Keep only the newest N generated images (0 = keep everything).
-keep_images = 0
 # Any extra arguments to pass straight to OnnxStream's sd binary.
 extra_sd_args = []
+
+[storage]
+# Old pictures are deleted automatically so the SD card never fills up.
+# A picture is deleted if ANY rule applies. The newest one is always kept.
+# Each picture is about 1 MB; at one an hour that's roughly 0.7 GB a month.
+#
+# Keep only the newest N pictures (0 = no limit).
+keep_images = 0
+# Delete pictures older than N days (0 = no limit).
+keep_days = 30
+# Safety net: if free space falls below this many GB, delete the oldest
+# pictures until it's back above it (0 = off).
+min_free_gb = 2
 
 [llm]
 # Let a small local language model write each prompt. If it fails for any
