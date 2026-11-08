@@ -33,7 +33,7 @@ DEFAULTS = {
     },
     "llm": {
         "enabled": True,
-        "theme": "a sci-fi landscape on an alien planet",
+        "theme": "a sci-fi scene on an alien world",
         "inspiration_file": "prompts/planets.json",
         "keep_style": True,
         "temperature": 0.9,

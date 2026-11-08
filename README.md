@@ -209,7 +209,7 @@ Edit `config.toml` (created from `config.example.toml`). The main settings:
 | `display.delay_seconds` | 120 | Let the Pi cool before refreshing the panel |
 | `display.type` | "" | Auto-detect. Set `"spectra73"` if detection fails |
 | `llm.enabled` | true | Let the local LLM write prompts (see below) |
-| `llm.theme` | alien planet landscape | What the LLM is asked to describe |
+| `llm.theme` | sci-fi scene on an alien world | What the LLM is asked to describe |
 | `schedule.on_calendar` | `*-*-* 06:00:00` | systemd [OnCalendar](https://www.freedesktop.org/software/systemd/man/systemd.time.html#Calendar%20Events) format |
 
 After changing `schedule.on_calendar`, run `scripts/install.sh --services`.
@@ -280,7 +280,7 @@ Bundled libraries:
 | File | Lists | Example prompt |
 | --- | --- | --- |
 | `prompts/flowers.json` | subject, style | single iris as a vintage postcard |
-| `prompts/planets.json` | landscape, sky, detail, style | crystal canyon under two suns a crashed spaceship as a linocut print |
+| `prompts/planets.json` | biome, sky, city or settlement (optional), detail (optional), style | glass desert fused by lightning with a comet streaking past a megacity of needle-thin spires in the style of art deco |
 
 ### Switching library
 
@@ -305,7 +305,7 @@ venv/bin/python src/generate_picture.py --prompts prompts/planets.json && venv/b
 
 * Add or remove entries in any list. Keep the commas between entries and the quotes around each one.
 * Add a whole new list (for example lighting or mood); it becomes another part of every prompt.
-* Use `""` entries to make a part optional. In `planets.json`, three of the detail entries are empty, so about a quarter of pictures have no extra detail.
+* Use `""` entries to make a part optional. The more empty entries a list has, the more often that part is left out. In `planets.json`, 20 of the 51 city and settlement entries are empty, so about 40% of pictures are wild landscapes with no city; and 6 of the 25 detail entries are empty, so about a quarter have no extra detail.
 * Keep the total prompt short (under about 60 words). SDXL ignores text past its limit.
 * Flat, bold, low-colour styles (prints, posters, flat illustration) look best on the 6-colour panel. Photo-realistic and soft gradient styles dither into noise.
 * Check your file before the next scheduled run:
@@ -323,7 +323,7 @@ fully offline once installed.
 For each picture:
 
 1. A few random fragments are picked from `llm.inspiration_file`
-   (`prompts/planets.json`): for example a landscape, a sky and a detail.
+   (`prompts/planets.json`): for example a biome, a sky, a city and a detail.
 2. The LLM ([Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF),
    run by [llama.cpp](https://github.com/ggml-org/llama.cpp)) is asked for one
    short scene on `llm.theme`, inspired by those fragments, in a style suited
@@ -386,7 +386,7 @@ venv/bin/python src/generate_picture.py --no-llm
 | Setting | Default | Notes |
 | --- | --- | --- |
 | `enabled` | true | false = use only the prompt library |
-| `theme` | "a sci-fi landscape on an alien planet" | The frame's subject. Change it to anything |
+| `theme` | "a sci-fi scene on an alien world" | The frame's subject. Change it to anything |
 | `inspiration_file` | `prompts/planets.json` | Random fragments from here steer each prompt |
 | `keep_style` | true | Take the art style from the library's last list instead of letting the LLM choose |
 | `temperature` | 0.9 | Higher = more surprising, lower = safer (0.6-1.1) |

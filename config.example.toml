@@ -41,7 +41,8 @@ min_free_gb = 2
 # reason, the plain prompt library (paths.prompts_file) is used instead.
 enabled = true
 # What every picture should be. Change this to change the frame's subject.
-theme = "a sci-fi landscape on an alien planet"
+# planets.json mixes wild landscapes, frontier outposts and alien cities.
+theme = "a sci-fi scene on an alien world"
 # Random fragments from this library are given to the LLM as inspiration.
 # With keep_style = true, the library's last list (art styles) is not shown to
 # the LLM; one style is appended to its prompt unchanged.

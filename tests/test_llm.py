@@ -84,7 +84,7 @@ def test_generate_appends_style(tmp_path):
     result = llm_prompt.generate(_cfg(tmp_path), random.Random(3), fake_llm)
     assert result["prompt"] == f"A frozen sea of methane under a cracked moon, {result['style']}"
     assert result["style"]
-    assert "sci-fi landscape on an alien planet" in seen["messages"][1]["content"]
+    assert "sci-fi scene on an alien world" in seen["messages"][1]["content"]
 
 
 def test_generate_retries_then_fails(tmp_path):
