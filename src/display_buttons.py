@@ -6,10 +6,15 @@
   C: step forward to a newer image
   D: hold (3 s by default) to shut down
 
+Test the buttons without changing the display (stop the service first):
+  sudo systemctl stop paperpi-buttons.service
+  venv/bin/python src/display_buttons.py --test
+
 Based on display_buttons.py from https://github.com/dylski/PaperPiAI
 (MIT, Dylan Banarse). Paths and pins now come from config.toml.
 """
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -21,7 +26,31 @@ from config import load_config, resolve  # noqa: E402
 from generate_picture import CURRENT_FILE, SHARED_FILE, list_images  # noqa: E402
 
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-DEBOUNCE_S = 0.05
+DEBOUNCE_S = 0.3  # ignore repeat edges on the same button within this time
+
+
+def log(msg):
+    print(msg, flush=True)  # flush so messages reach the journal immediately
+
+
+def collect_presses(events, labels, last_seen, debounce_s=DEBOUNCE_S):
+    """Turn raw edge events into button presses, dropping contact bounce.
+
+    events: objects with .line_offset and .timestamp_ns (kernel time).
+    labels: {line_offset: "A".."D"}. last_seen is updated in place.
+    Returns the labels pressed, oldest first.
+    """
+    presses = []
+    for event in events:
+        label = labels.get(event.line_offset)
+        if label is None:
+            continue
+        t = event.timestamp_ns / 1e9
+        if t - last_seen.get(label, float("-inf")) < debounce_s:
+            continue
+        last_seen[label] = t
+        presses.append(label)
+    return presses
 
 
 def current_index(images_dir, images):
@@ -38,20 +67,30 @@ def current_index(images_dir, images):
 
 
 def target_index(action, current, count):
-    """New index for a button action, or None if there's nowhere to go."""
+    """New index for one button action, or None if there's nowhere to go."""
+    key = {"latest": "A", "older": "B", "newer": "C"}[action]
+    return navigate([key], current, count)
+
+
+def navigate(presses, current, count):
+    """Index to show after a sequence of A/B/C presses, or None for no change.
+
+    A jumps to the newest picture (index 0) and always redraws it. B steps one
+    older (+1) and C one newer (-1); steps past either end stop at the end.
+    """
     if count == 0:
         return None
-    if action == "latest":
-        new = 0
-    elif action == "older":
-        new = current + 1
-    elif action == "newer":
-        new = current - 1
-    else:
-        raise ValueError(action)
-    if new < 0 or new >= count:
+    target = current
+    for p in presses:
+        if p == "A":
+            target = 0
+        elif p == "B":
+            target = min(target + 1, count - 1)
+        elif p == "C":
+            target = max(target - 1, 0)
+    if target == current and "A" not in presses:
         return None
-    return new
+    return target
 
 
 class Frame:
@@ -59,25 +98,40 @@ class Frame:
         self.cfg = cfg
         self.images_dir = resolve(cfg["paths"]["images_dir"])
 
-    def show(self, action):
+    def show(self, presses):
+        """Handle A/B/C presses (a list, oldest first). Returns True if the display changed."""
+        if isinstance(presses, str):  # single action name, e.g. "latest"
+            presses = [{"latest": "A", "older": "B", "newer": "C"}[presses]]
         images = list_images(self.images_dir) if os.path.isdir(self.images_dir) else []
-        new = target_index(action, current_index(self.images_dir, images), len(images))
+        current = current_index(self.images_dir, images)
+        new = navigate(presses, current, len(images))
         if new is None:
-            print(f"{action}: no image to show")
-            return
+            if not images:
+                log("No pictures yet")
+            elif current == 0 and presses[-1] in "AC":
+                log("Already showing the newest picture")
+            else:
+                log("Already showing the oldest picture")
+            return False
         path = images[new]
-        print(f"{action}: showing {os.path.basename(path)}", flush=True)
+        log(f"Showing picture {new + 1} of {len(images)} (1 = newest): {os.path.basename(path)}")
         shutil.copy2(path, os.path.join(self.images_dir, SHARED_FILE))
         with open(os.path.join(self.images_dir, CURRENT_FILE), "w") as f:
             f.write(os.path.basename(path))
         subprocess.run([sys.executable, os.path.join(SRC_DIR, "display_picture.py")])
+        return True
 
     def shutdown(self):
-        print("Shutting down", flush=True)
+        log("Shutting down")
         subprocess.run(["sudo", "-n", "/usr/sbin/shutdown", "-h", "now"])
 
 
-def main():
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Inky Impression button handler.")
+    ap.add_argument("--test", action="store_true",
+                    help="Just print button presses; don't change the display or shut down")
+    args = ap.parse_args(argv)
+
     import gpiod
     import gpiodevice
     from gpiod.line import Bias, Direction, Edge, Value
@@ -86,47 +140,49 @@ def main():
     b = cfg["buttons"]
     frame = Frame(cfg)
     pins = {"A": b["pin_a"], "B": b["pin_b"], "C": b["pin_c"], "D": b["pin_d"]}
-    actions = {"A": "latest", "B": "older", "C": "newer"}
 
     settings = gpiod.LineSettings(direction=Direction.INPUT, bias=Bias.PULL_UP,
                                   edge_detection=Edge.FALLING)
     chip = gpiodevice.find_chip_by_platform()
-    offsets = {chip.line_offset_from_id(pin): label for label, pin in pins.items()}
+    labels = {chip.line_offset_from_id(pin): label for label, pin in pins.items()}
+    offsets = {label: offset for offset, label in labels.items()}
     request = chip.request_lines(consumer="paperpi-buttons",
-                                 config=dict.fromkeys(offsets, settings))
+                                 config=dict.fromkeys(labels, settings))
 
-    def pressed(offset):
-        return request.get_value(offset) == Value.INACTIVE  # pulled up; low = pressed
+    def pressed(label):
+        # Pulled up, so a pressed button reads low (INACTIVE).
+        return request.get_value(offsets[label]) == Value.INACTIVE
 
-    def held_for(offset, seconds):
+    def held_for(label, seconds):
         end = time.monotonic() + seconds
         while time.monotonic() < end:
-            if not pressed(offset):
+            if not pressed(label):
                 return False
             time.sleep(0.05)
         return True
 
-    print(f"Watching buttons {pins}", flush=True)
+    hold = b["shutdown_hold_seconds"]
+    log(f"Watching buttons {pins}" + (" (test mode)" if args.test else ""))
+    last_seen = {}
     try:
         while True:
             if not request.wait_edge_events(1.0):
                 continue
-            for event in request.read_edge_events():
-                offset = event.line_offset
-                time.sleep(DEBOUNCE_S)
-                if not pressed(offset):
-                    continue  # bounce
-                label = offsets[offset]
-                if label == "D":
-                    if held_for(offset, b["shutdown_hold_seconds"]):
-                        frame.shutdown()
-                    else:
-                        print(f"D: hold for {b['shutdown_hold_seconds']}s to shut down")
+            presses = collect_presses(request.read_edge_events(), labels, last_seen)
+            if not presses:
+                continue
+            log(f"Pressed: {' '.join(presses)}")
+            if args.test:
+                continue
+            if presses[-1] == "D":
+                if held_for("D", hold):
+                    frame.shutdown()
                 else:
-                    frame.show(actions[label])
-                # Drop any events queued while we were busy (e.g. during a refresh).
-                while request.wait_edge_events(0):
-                    request.read_edge_events()
+                    log(f"D: hold for {hold}s to shut down")
+                continue
+            # Presses made while the screen was refreshing arrive together
+            # here and are combined (e.g. B B = back two) into one refresh.
+            frame.show([p for p in presses if p != "D"])
     except KeyboardInterrupt:
         pass
     finally:

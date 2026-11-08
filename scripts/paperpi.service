@@ -6,5 +6,6 @@ After=local-fs.target
 Type=oneshot
 User=@USER@
 WorkingDirectory=@REPO@
+Environment=PYTHONUNBUFFERED=1
 ExecStart=@REPO@/scripts/run_frame.sh
 Nice=10

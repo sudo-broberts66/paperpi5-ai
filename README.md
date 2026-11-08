@@ -80,10 +80,13 @@ journalctl -fu paperpi.service
 
 * A new picture is made on the schedule in `config.toml` (default 06:00 every day).
 * Buttons on the side of the display:
-  * **A**: latest picture
-  * **B**: older picture
-  * **C**: newer picture
+  * **A**: newest picture
+  * **B**: one picture older
+  * **C**: one picture newer (does nothing if you're already on the newest)
   * **D**: hold for 3 s to shut down safely
+
+  The screen takes about 30 seconds to refresh. Presses made during a refresh
+  aren't lost: they're combined and applied when it finishes (B B = back two).
 * Pictures (and a `.txt` with each prompt) are saved in `images/`.
 
 ## Running on its own
@@ -442,6 +445,24 @@ Re-run `scripts/install.sh` to resume, then `venv/bin/python src/check_model.py`
 `scripts/doctor.sh --llm`, and check the reason in
 `journalctl -u paperpi.service -n 100` (look for "LLM prompt failed").
 `scripts/install.sh --llm --rebuild` recompiles llama.cpp if it crashes.
+
+**Buttons don't respond**: watch what the button service sees while you press them:
+
+```bash
+journalctl -fu paperpi-buttons.service
+```
+
+Each press logs `Pressed: A` (or B, C, D) and what it did. Press Ctrl+C to stop
+watching. If a button logs nothing at all, test the hardware on its own:
+
+```bash
+sudo systemctl stop paperpi-buttons.service && venv/bin/python src/display_buttons.py --test
+```
+
+This only prints presses. Press Ctrl+C when done, then
+`sudo systemctl start paperpi-buttons.service`. If a button still prints
+nothing in test mode, check its pin under `[buttons]` in `config.toml`
+(the 7.3" uses A=5, B=6, C=16, D=24).
 
 **Washed-out or odd colours**: try `display.saturation` between 0.3 and 0.8.
 E-paper is also temperature-sensitive, so increase `display.delay_seconds` if

@@ -5,6 +5,7 @@ After=local-fs.target
 [Service]
 User=@USER@
 WorkingDirectory=@REPO@
+Environment=PYTHONUNBUFFERED=1
 ExecStart=@REPO@/venv/bin/python @REPO@/src/display_buttons.py
 Restart=always
 RestartSec=5
