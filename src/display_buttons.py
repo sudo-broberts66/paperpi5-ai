@@ -118,8 +118,16 @@ class Frame:
         shutil.copy2(path, os.path.join(self.images_dir, SHARED_FILE))
         with open(os.path.join(self.images_dir, CURRENT_FILE), "w") as f:
             f.write(os.path.basename(path))
-        subprocess.run([sys.executable, os.path.join(SRC_DIR, "display_picture.py")])
-        return True
+        log("Updating screen (about 30-40 seconds)...")
+        start = time.monotonic()
+        result = subprocess.run([sys.executable, os.path.join(SRC_DIR, "display_picture.py")])
+        took = time.monotonic() - start
+        if result.returncode == 0:
+            log(f"Screen updated in {took:.0f}s")
+        else:
+            log(f"Screen update FAILED (exit code {result.returncode}) after {took:.0f}s; "
+                "see the lines above")
+        return result.returncode == 0
 
     def shutdown(self):
         log("Shutting down")

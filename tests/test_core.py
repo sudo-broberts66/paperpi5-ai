@@ -14,6 +14,20 @@ import display_picture
 import generate_picture
 
 
+
+_OK = __import__("types").SimpleNamespace(returncode=0)
+
+
+def test_button_reports_failed_screen_update(tmp_path, monkeypatch, capsys):
+    _make_images(tmp_path, ["a.png", "b.png"])
+    fail = __import__("types").SimpleNamespace(returncode=1)
+    monkeypatch.setattr(display_buttons.subprocess, "run", lambda cmd: fail)
+    cfg = config.load_config()
+    cfg["paths"]["images_dir"] = str(tmp_path)
+    assert display_buttons.Frame(cfg).show(["A"]) is False
+    assert "Screen update FAILED (exit code 1)" in capsys.readouterr().out
+
+
 def test_defaults_match_example_config():
     example = config.load_config(os.path.join(config.REPO_ROOT, "config.example.toml"))
     assert example == config.DEFAULTS
@@ -156,7 +170,7 @@ def test_button_current_index(tmp_path):
 def test_button_show_steps_through_images(tmp_path, monkeypatch):
     _make_images(tmp_path, ["a.png", "b.png", "c.png"])
     calls = []
-    monkeypatch.setattr(display_buttons.subprocess, "run", lambda cmd: calls.append(cmd))
+    monkeypatch.setattr(display_buttons.subprocess, "run", lambda cmd: calls.append(cmd) or _OK)
     cfg = config.load_config()
     cfg["paths"]["images_dir"] = str(tmp_path)
     frame = display_buttons.Frame(cfg)
@@ -181,7 +195,7 @@ def test_button_a_redraws_when_shown_picture_was_deleted(tmp_path, monkeypatch):
     _make_images(tmp_path, ["a.png", "b.png"])
     (tmp_path / ".current").write_text("deleted-by-cleanup.png")
     calls = []
-    monkeypatch.setattr(display_buttons.subprocess, "run", lambda cmd: calls.append(cmd))
+    monkeypatch.setattr(display_buttons.subprocess, "run", lambda cmd: calls.append(cmd) or _OK)
     cfg = config.load_config()
     cfg["paths"]["images_dir"] = str(tmp_path)
     assert display_buttons.Frame(cfg).show(["A"]) is True
@@ -267,7 +281,7 @@ def test_button_main_loop_with_fake_gpio(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(display_buttons, "load_config", lambda: cfg)
     shown = []
     monkeypatch.setattr(display_buttons.subprocess, "run",
-                        lambda cmd: shown.append((tmp_path / ".current").read_text()))
+                        lambda cmd: shown.append((tmp_path / ".current").read_text()) or _OK)
     display_buttons.main([])
     # B -> b, A -> c (newest), B -> b, C -> c; D tap does nothing.
     assert shown == ["b.png", "c.png", "b.png", "c.png"]

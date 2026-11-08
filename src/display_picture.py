@@ -100,8 +100,12 @@ def main(argv=None):
     if inky is not None:
         # Only one process may drive the panel at a time (timer vs buttons).
         with open("/tmp/paperpi-display.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            print("Updating display (takes ~30 seconds)...", flush=True)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print("Waiting for another screen update to finish...", flush=True)
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            print(f"Drawing {os.path.basename(image_path)} (takes ~30 seconds)...", flush=True)
             inky.set_image(image, saturation=args.saturation)
             inky.show()
         print("Done.")
